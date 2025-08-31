@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { OpenAI } from "openai";
 import { z } from "zod";
 
+// Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || "demo-key",
 });
 
+// Input schema validation
 const chatSchema = z.object({
   messages: z.array(
     z.object({
@@ -21,12 +23,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { messages, stream } = chatSchema.parse(body);
 
-    // Check if OpenAI is available
-    if (
-      !process.env.OPENAI_API_KEY ||
-      process.env.OPENAI_API_KEY === "demo-key"
-    ) {
-      // Return mock response for demo
+    // Fallback if no real API key
+    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "demo-key") {
       const mockResponse = generateMockResponse(
         messages[messages.length - 1]?.content || ""
       );
@@ -39,13 +37,14 @@ export async function POST(request: NextRequest) {
             Connection: "keep-alive",
           },
         });
-      } else {
-        return NextResponse.json({ message: mockResponse });
       }
+
+      return NextResponse.json({ message: mockResponse });
     }
 
+    // Call OpenAI
     const completion = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // ✅ lighter + faster model
       messages: [
         {
           role: "system",
@@ -59,6 +58,7 @@ export async function POST(request: NextRequest) {
       temperature: 0.7,
     });
 
+    // Stream response
     if (stream) {
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
@@ -88,43 +88,48 @@ export async function POST(request: NextRequest) {
           Connection: "keep-alive",
         },
       });
-    } else {
-      return NextResponse.json({
-        message:
-          completion.choices[0]?.message?.content || "No response generated",
-      });
     }
+
+    // Non-stream response
+    return NextResponse.json({
+      message:
+        completion.choices[0]?.message?.content || "No response generated",
+    });
   } catch (error) {
     console.error("Chat API error:", error);
 
-    // Fallback to mock response
-    const mockResponse =
-      "I'm here to help you with document processing, translation, and analysis. How can I assist you today?";
-
-    return NextResponse.json({ message: mockResponse }, { status: 200 });
+    return NextResponse.json(
+      {
+        message:
+          "I'm here to help you with document processing, translation, and analysis. How can I assist you today?",
+      },
+      { status: 200 }
+    );
   }
 }
+
+// ---------- Helpers ----------
 
 function generateMockResponse(userMessage: string): string {
   const lowerMessage = userMessage.toLowerCase();
 
   if (lowerMessage.includes("translate")) {
-    return "I can help you translate documents into over 100 languages with context-aware accuracy. Would you like me to translate a specific document or text for you? Just upload the file or paste the text you'd like translated.";
+    return "I can help you translate documents into over 100 languages. Upload your file or paste text to get started.";
   }
 
   if (lowerMessage.includes("analyze") || lowerMessage.includes("analysis")) {
-    return "I can provide comprehensive document analysis including:\n\n• Key insights extraction\n• Sentiment analysis\n• Topic modeling\n• Summary generation\n• Data visualization\n\nPlease upload your document or describe what type of analysis you need.";
+    return "I can provide document analysis: insights, sentiment, topics, summaries, and visualizations. Upload your file to begin.";
   }
 
   if (lowerMessage.includes("summarize") || lowerMessage.includes("summary")) {
-    return "I can create intelligent summaries of your documents, highlighting the most important points and key takeaways. Upload your document and I'll provide a concise, actionable summary tailored to your needs.";
+    return "I can summarize your documents, highlighting key points. Upload your file and I'll create a tailored summary.";
   }
 
   if (lowerMessage.includes("document") || lowerMessage.includes("pdf")) {
-    return "I can process various document formats including PDF, DOCX, TXT, and images. My capabilities include:\n\n• Text extraction and OCR\n• Content analysis and insights\n• Translation services\n• Data extraction\n• Format conversion\n\nWhat would you like to do with your document?";
+    return "I can process PDFs, DOCX, TXT, and images. Services include OCR, translation, content insights, and data extraction.";
   }
 
-  return "I'm TesaReact AI, your intelligent document processing assistant. I can help you with:\n\n• Document analysis and insights\n• Multi-language translation\n• Content summarization\n• Data extraction and visualization\n• Business intelligence from documents\n\nHow can I assist you today?";
+  return "I'm TesaReact AI. I can help with document analysis, translation, summarization, and insights. What would you like me to do?";
 }
 
 function createMockStream(response: string): ReadableStream {
@@ -146,7 +151,8 @@ function createMockStream(response: string): ReadableStream {
           controller.close();
           clearInterval(interval);
         }
-      }, 50); // Simulate typing speed
+      }, 50);
     },
   });
 }
+
